@@ -10,11 +10,6 @@ import (
 
 var ErrDeny = errors.New("deny")
 
-type (
-	claimsKey     struct{}
-	assertionsKey struct{}
-)
-
 type Subject interface {
 	Identifier() string
 	Roles() []string
@@ -25,28 +20,16 @@ type Claims struct {
 	Metadata map[string]any
 }
 
-func WithClaims(ctx context.Context, claims *Claims) context.Context {
-	return context.WithValue(ctx, claimsKey{}, claims)
-}
-
-func CtxClaims(ctx context.Context) *Claims {
-	claims, _ := ctx.Value(claimsKey{}).(*Claims)
-	return claims
-}
-
-func WithAssertions(ctx context.Context, assertions ...Assertion) context.Context {
-	return context.WithValue(ctx, assertionsKey{}, assertions)
-}
-
-func CtxAssertions(ctx context.Context) []Assertion {
-	assertions, _ := ctx.Value(assertionsKey{}).([]Assertion)
-	return append(make([]Assertion, 0, len(assertions)), assertions...)
-}
-
 type Target struct {
 	Action     string
 	Assertions []Assertion
 	Metadata   map[string]any
+}
+
+func (t *Target) reset() {
+	t.Action = ""
+	t.Assertions = nil
+	t.Metadata = nil
 }
 
 type Decision int8
@@ -129,11 +112,25 @@ func RequestAuthorizer(authorizer Authorizer, actions func(*http.Request) []stri
 		assertions := CtxAssertions(ctx)
 
 		target := pool.Get().(*Target)
-		defer pool.Put(target)
+		defer func() {
+			target.reset()
+			pool.Put(target)
+		}()
 
+		if ctxTarget := CtxTarget(ctx); ctxTarget != nil {
+			target.Action = ctxTarget.Action
+			target.Metadata = ctxTarget.Metadata
+			target.Assertions = make([]Assertion, len(assertions)+len(ctxTarget.Assertions))
+			copy(target.Assertions, assertions)
+			copy(target.Assertions[len(assertions):], ctxTarget.Assertions)
+
+			decision, err = authorizer.Authorize(ctx, claims, target)
+			return
+		}
+
+		target.Assertions = assertions
 		for _, action := range actions(r) {
 			target.Action = action
-			target.Assertions = assertions
 
 			if decision, err = authorizer.Authorize(ctx, claims, target); decision == DecisionAllow {
 				return nil
