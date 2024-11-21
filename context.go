@@ -3,9 +3,10 @@ package rbac
 import "context"
 
 type (
-	claimsKey     struct{}
-	targetKey     struct{}
-	assertionsKey struct{}
+	claimsKey      struct{}
+	targetKey      struct{}
+	assertionsKey  struct{}
+	requestInfoKey struct{}
 )
 
 func WithClaims(ctx context.Context, claims *Claims) context.Context {
@@ -33,4 +34,13 @@ func WithAssertions(ctx context.Context, assertions ...Assertion) context.Contex
 func CtxAssertions(ctx context.Context) []Assertion {
 	assertions, _ := ctx.Value(assertionsKey{}).([]Assertion)
 	return append(make([]Assertion, 0, len(assertions)), assertions...)
+}
+
+func WithRequestInfo(ctx context.Context, info RequestInfo) context.Context {
+	return context.WithValue(ctx, requestInfoKey{}, info)
+}
+
+func CtxRequestInfo(ctx context.Context) RequestInfo {
+	info, _ := ctx.Value(requestInfoKey{}).(RequestInfo)
+	return info
 }
