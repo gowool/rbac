@@ -4,8 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"regexp"
 	"slices"
 )
+
+var _ Role = (*DefaultRole)(nil)
 
 var ErrCircularReference = errors.New("circular reference detected")
 
@@ -15,6 +18,7 @@ type Role interface {
 	AddPermissions(permission string, rest ...string)
 	HasPermission(permission string) bool
 	Permissions(children bool) []string
+	RePermissions(children bool) []*regexp.Regexp
 	AddParent(Role) error
 	Parents() []Role
 	AddChild(Role) error
@@ -24,10 +28,11 @@ type Role interface {
 }
 
 type DefaultRole struct {
-	name        string
-	permissions map[string]struct{}
-	parents     map[string]Role
-	children    map[string]Role
+	name          string
+	rePermissions []*regexp.Regexp
+	permissions   map[string]struct{}
+	parents       map[string]Role
+	children      map[string]Role
 }
 
 func NewRole(name string) *DefaultRole {
@@ -49,14 +54,27 @@ func (r *DefaultRole) Name() string {
 
 func (r *DefaultRole) AddPermissions(permission string, rest ...string) {
 	r.permissions[permission] = struct{}{}
+	if re, err := regexp.Compile(permission); err == nil {
+		r.rePermissions = append(r.rePermissions, re)
+	}
+
 	for _, p := range rest {
 		r.permissions[p] = struct{}{}
+		if re, err := regexp.Compile(p); err == nil {
+			r.rePermissions = append(r.rePermissions, re)
+		}
 	}
 }
 
 func (r *DefaultRole) HasPermission(permission string) bool {
 	if _, ok := r.permissions[permission]; ok {
 		return true
+	}
+
+	for _, re := range r.rePermissions {
+		if re.MatchString(permission) {
+			return true
+		}
 	}
 
 	for _, child := range r.children {
@@ -78,6 +96,17 @@ func (r *DefaultRole) Permissions(children bool) []string {
 		}
 	}
 	return slices.Collect(maps.Keys(permissions))
+}
+
+func (r *DefaultRole) RePermissions(children bool) []*regexp.Regexp {
+	permissions := make([]*regexp.Regexp, len(r.rePermissions))
+	copy(permissions, r.rePermissions)
+	if children {
+		for _, child := range r.children {
+			permissions = append(permissions, child.RePermissions(children)...)
+		}
+	}
+	return permissions
 }
 
 func (r *DefaultRole) AddParent(parent Role) error {
