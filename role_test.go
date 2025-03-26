@@ -22,8 +22,14 @@ func TestDefaultRole_AddPermissions(t *testing.T) {
 	assert.False(t, role1.HasPermission("POST /api/v1/foo/boo"))
 
 	role2 := NewRole("test2")
-	role2.AddPermissions(".*")
-	assert.True(t, role2.HasPermission("POST /api/v1/foo/boo"))
+	role2.AddPermissions("*")
+	assert.True(t, role2.HasPermission("*"))
+	assert.False(t, role2.HasPermission("POST /api/v1/foo/boo"))
+
+	role3 := NewRole("test3")
+	role3.AddPermissions(".*")
+	assert.True(t, role3.HasPermission("*"))
+	assert.True(t, role3.HasPermission("POST /api/v1/foo/boo"))
 }
 
 func TestDefaultRole_AddChild(t *testing.T) {

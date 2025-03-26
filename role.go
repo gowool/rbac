@@ -53,15 +53,17 @@ func (r *DefaultRole) Name() string {
 }
 
 func (r *DefaultRole) AddPermissions(permission string, rest ...string) {
-	r.permissions[permission] = struct{}{}
 	if re, err := regexp.Compile(permission); err == nil {
 		r.rePermissions = append(r.rePermissions, re)
+	} else {
+		r.permissions[permission] = struct{}{}
 	}
 
 	for _, p := range rest {
-		r.permissions[p] = struct{}{}
 		if re, err := regexp.Compile(p); err == nil {
 			r.rePermissions = append(r.rePermissions, re)
+		} else {
+			r.permissions[p] = struct{}{}
 		}
 	}
 }
