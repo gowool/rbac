@@ -5,7 +5,7 @@ go 1.24
 replace github.com/gowool/rbac => ..
 
 require (
-	github.com/gowool/rbac v0.0.4
+	github.com/gowool/rbac v0.0.5
 	go.uber.org/fx v1.23.0
 )
 
