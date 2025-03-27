@@ -89,15 +89,17 @@ func (r *DefaultRole) HasPermission(permission string) bool {
 }
 
 func (r *DefaultRole) Permissions(children bool) []string {
-	permissions := maps.Clone(r.permissions)
+	permissions := make([]string, 0, len(r.permissions)+len(r.rePermissions))
+	permissions = append(permissions, slices.Collect(maps.Keys(r.permissions))...)
+	for _, re := range r.rePermissions {
+		permissions = append(permissions, re.String())
+	}
 	if children {
 		for _, child := range r.children {
-			for _, permission := range child.Permissions(children) {
-				permissions[permission] = struct{}{}
-			}
+			permissions = append(permissions, child.Permissions(children)...)
 		}
 	}
-	return slices.Collect(maps.Keys(permissions))
+	return permissions
 }
 
 func (r *DefaultRole) RePermissions(children bool) []*regexp.Regexp {
