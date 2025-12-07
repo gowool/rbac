@@ -8,7 +8,6 @@ import (
 var ErrDeny = errors.New("deny")
 
 type Subject interface {
-	Identifier() string
 	Roles() []string
 }
 
@@ -32,7 +31,7 @@ func (t *Target) reset() {
 type Decision int8
 
 const (
-	DecisionDeny = iota + 1
+	DecisionDeny = iota
 	DecisionAllow
 )
 
@@ -71,11 +70,7 @@ func (a *DefaultAuthorizer) Authorize(ctx context.Context, claims *Claims, targe
 		return
 	}
 
-	roles := make([]string, 0, len(claims.Subject.Roles())+1)
-	roles = append(roles, claims.Subject.Identifier())
-	roles = append(roles, claims.Subject.Roles()...)
-
-	for _, role := range roles {
+	for _, role := range claims.Subject.Roles() {
 		granted, err1 := a.rbac.IsGrantedE(ctx, role, target.Action, target.Assertions...)
 		if granted && err1 == nil {
 			return DecisionAllow, nil
