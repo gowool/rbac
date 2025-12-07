@@ -1,5 +1,10 @@
 # RBAC (Role-Based Access Control)
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/gowool/rbac.svg)](https://pkg.go.dev/github.com/gowool/rbac)
+[![Go Report Card](https://goreportcard.com/badge/github.com/gowool/rbac)](https://goreportcard.com/report/github.com/gowool/rbac)
+[![codecov](https://codecov.io/github/gowool/rbac/graph/badge.svg?token=B4SRE6W1NU)](https://codecov.io/github/gowool/rbac)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](https://github.com/gowool/rbac/blob/main/LICENSE)
+
 A comprehensive and flexible Go library for implementing role-based access control with hierarchical roles, regex pattern support, and custom assertions.
 
 ## Features
