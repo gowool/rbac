@@ -1,20 +1,20 @@
 package rbac
 
 type RoleConfig struct {
-	Role     string   `json:"role,omitempty" yaml:"role,omitempty"`
-	Parents  []string `json:"parents,omitempty" yaml:"parents,omitempty"`
-	Children []string `json:"children,omitempty" yaml:"children,omitempty"`
+	Role     string   `env:"ROLE" json:"role,omitempty" yaml:"role,omitempty"`
+	Parents  []string `env:"PARENTS" json:"parents,omitempty" yaml:"parents,omitempty"`
+	Children []string `env:"CHILDREN" json:"children,omitempty" yaml:"children,omitempty"`
 }
 
 type AccessConfig struct {
-	Role        string   `json:"role,omitempty" yaml:"role,omitempty"`
-	Permissions []string `json:"permissions,omitempty" yaml:"permissions,omitempty"`
+	Role        string   `env:"ROLE" json:"role,omitempty" yaml:"role,omitempty"`
+	Permissions []string `env:"PERMISSIONS" json:"permissions,omitempty" yaml:"permissions,omitempty"`
 }
 
 type Config struct {
-	CreateMissingRoles bool           `json:"createMissingRoles,omitempty" yaml:"createMissingRoles,omitempty"`
-	RoleHierarchy      []RoleConfig   `json:"roleHierarchy,omitempty" yaml:"roleHierarchy,omitempty"`
-	AccessControl      []AccessConfig `json:"accessControl,omitempty" yaml:"accessControl,omitempty"`
+	CreateMissingRoles bool           `env:"CREATE_MISSING_ROLES" json:"createMissingRoles,omitempty" yaml:"createMissingRoles,omitempty"`
+	RoleHierarchy      []RoleConfig   `envPrefix:"ROLE_CONFIG_" json:"roleHierarchy,omitempty" yaml:"roleHierarchy,omitempty"`
+	AccessControl      []AccessConfig `envPrefix:"ACCESS_CONFIG_" json:"accessControl,omitempty" yaml:"accessControl,omitempty"`
 }
 
 func NewWithConfig(cfg Config) (*RBAC, error) {
