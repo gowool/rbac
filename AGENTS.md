@@ -1,4 +1,4 @@
-# CLAUDE.md
+# AGENTS.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -26,25 +26,22 @@ go test -race -run TestIsGrantedAssertion
 go test -race -cover ./...
 ```
 
-### Building
+### Building & Code Quality
 ```bash
 # Build the package
 go build ./...
 
-# Build with verbose output
-go build -v ./...
-```
-
-### Code Quality
-```bash
-# Format code
+# Format code (use go fmt)
 go fmt ./...
 
 # Run go vet
 go vet ./...
 
-# Run go mod tidy to clean dependencies
+# Clean up dependencies
 go mod tidy
+
+# Run static analysis (if available)
+golangci-lint run -v --timeout=5m --build-tags=race --output.code-climate.path gl-code-quality-report.json
 ```
 
 ## Architecture

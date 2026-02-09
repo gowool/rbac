@@ -2,31 +2,32 @@ package rbac
 
 import (
 	"context"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
 )
 
 type testRole struct {
-	Role
+	*Role
 }
 
 type simpleTrueAssertion struct{}
 
-func (*simpleTrueAssertion) Assert(context.Context, Role, string) (bool, error) {
-	return true, nil
+func (*simpleTrueAssertion) Assert(context.Context, *Role, string) bool {
+	return true
 }
 
 type simpleFalseAssertion struct{}
 
-func (*simpleFalseAssertion) Assert(context.Context, Role, string) (bool, error) {
-	return false, nil
+func (*simpleFalseAssertion) Assert(context.Context, *Role, string) bool {
+	return false
 }
 
 type roleMustMatchAssertion struct{}
 
-func (*roleMustMatchAssertion) Assert(_ context.Context, role Role, _ string) (bool, error) {
-	return role.Name() == "foo", nil
+func (*roleMustMatchAssertion) Assert(_ context.Context, role *Role, _ string) bool {
+	return role != nil && role.Name() == "foo"
 }
 
 type rbacSuit struct {
@@ -136,8 +137,8 @@ func (s *rbacSuit) TestAddRoleWithParentsUsingRBAC() {
 	s.Nil(s.rbac.AddRole(foo))
 	s.Nil(s.rbac.AddRole(bar, foo))
 
-	s.ElementsMatch([]Role{foo}, bar.Parents())
-	s.ElementsMatch([]Role{bar}, foo.Children())
+	s.ElementsMatch([]*Role{foo}, slices.Collect(bar.Parents()))
+	s.ElementsMatch([]*Role{bar}, slices.Collect(foo.Children()))
 }
 
 func (s *rbacSuit) TestAddRoleWithAutomaticParentsUsingRBAC() {
@@ -149,8 +150,8 @@ func (s *rbacSuit) TestAddRoleWithAutomaticParentsUsingRBAC() {
 
 	s.Nil(s.rbac.AddRole(bar, foo))
 
-	s.ElementsMatch([]Role{foo}, bar.Parents())
-	s.ElementsMatch([]Role{bar}, foo.Children())
+	s.ElementsMatch([]*Role{foo}, slices.Collect(bar.Parents()))
+	s.ElementsMatch([]*Role{bar}, slices.Collect(foo.Children()))
 }
 
 func (s *rbacSuit) TestAddMultipleParentRole() {
@@ -170,16 +171,16 @@ func (s *rbacSuit) TestAddMultipleParentRole() {
 	viewerRole.AddPermissions("post.view")
 	s.Nil(s.rbac.AddRole(viewerRole, "Editor", "Manager"))
 
-	s.Equal("Viewer", editorRole.Children()[0].Name())
-	s.Equal("Viewer", managerRole.Children()[0].Name())
+	s.Equal("Viewer", slices.Collect(editorRole.Children())[0].Name())
+	s.Equal("Viewer", slices.Collect(managerRole.Children())[0].Name())
 	s.True(s.rbac.IsGranted(context.Background(), "Editor", "post.view"))
 	s.True(s.rbac.IsGranted(context.Background(), "Manager", "post.view"))
 
-	s.ElementsMatch([]Role{editorRole, managerRole}, viewerRole.Parents())
-	s.ElementsMatch([]Role{adminRole}, managerRole.Parents())
+	s.ElementsMatch([]*Role{editorRole, managerRole}, slices.Collect(viewerRole.Parents()))
+	s.ElementsMatch([]*Role{adminRole}, slices.Collect(managerRole.Parents()))
 
-	s.Empty(editorRole.Parents())
-	s.Empty(adminRole.Parents())
+	s.Empty(slices.Collect(editorRole.Parents()))
+	s.Empty(slices.Collect(adminRole.Parents()))
 }
 
 func (s *rbacSuit) TestAddParentRole() {
@@ -202,13 +203,13 @@ func (s *rbacSuit) TestAddParentRole() {
 	s.Nil(viewerRole.AddParent(managerRole))
 	s.Nil(s.rbac.AddRole(viewerRole))
 
-	s.ElementsMatch([]Role{viewerRole}, editorRole.Children())
-	s.ElementsMatch([]Role{viewerRole}, managerRole.Children())
-	s.ElementsMatch([]Role{editorRole, managerRole}, viewerRole.Parents())
-	s.ElementsMatch([]Role{adminRole}, managerRole.Parents())
+	s.ElementsMatch([]*Role{viewerRole}, slices.Collect(editorRole.Children()))
+	s.ElementsMatch([]*Role{viewerRole}, slices.Collect(managerRole.Children()))
+	s.ElementsMatch([]*Role{editorRole, managerRole}, slices.Collect(viewerRole.Parents()))
+	s.ElementsMatch([]*Role{adminRole}, slices.Collect(managerRole.Parents()))
 
-	s.Empty(editorRole.Parents())
-	s.Empty(adminRole.Parents())
+	s.Empty(slices.Collect(editorRole.Parents()))
+	s.Empty(slices.Collect(adminRole.Parents()))
 
 	s.True(s.rbac.IsGranted(context.Background(), "Editor", "post.view"))
 	s.True(s.rbac.IsGranted(context.Background(), "Editor", "post.edit"))

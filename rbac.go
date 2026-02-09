@@ -4,22 +4,24 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"iter"
 	"maps"
-	"slices"
 )
 
 var (
+	ErrCircularRef  = errors.New("circular reference detected")
+	ErrRoleNil      = errors.New("role is nil")
 	ErrRoleNotFound = errors.New("role not found")
 	ErrInvalidRole  = errors.New("role must be a string or implement the Role interface")
 )
 
 type Assertion interface {
-	Assert(ctx context.Context, role Role, permission string) (bool, error)
+	Assert(ctx context.Context, role *Role, permission string) bool
 }
 
-type AssertionFunc func(ctx context.Context, role Role, permission string) (bool, error)
+type AssertionFunc func(ctx context.Context, role *Role, permission string) bool
 
-func (f AssertionFunc) Assert(ctx context.Context, role Role, permission string) (bool, error) {
+func (f AssertionFunc) Assert(ctx context.Context, role *Role, permission string) bool {
 	return f(ctx, role, permission)
 }
 
@@ -28,12 +30,12 @@ type AuthorizationChecker interface {
 }
 
 type RBAC struct {
-	roles              map[string]Role
+	roles              map[string]*Role
 	createMissingRoles bool
 }
 
 func New() *RBAC {
-	return &RBAC{roles: map[string]Role{}}
+	return &RBAC{roles: map[string]*Role{}}
 }
 
 func (rbac *RBAC) SetCreateMissingRoles(createMissingRoles bool) *RBAC {
@@ -45,11 +47,11 @@ func (rbac *RBAC) CreateMissingRoles() bool {
 	return rbac.createMissingRoles
 }
 
-func (rbac *RBAC) Roles() []Role {
-	return slices.Collect(maps.Values(rbac.roles))
+func (rbac *RBAC) Roles() iter.Seq[*Role] {
+	return maps.Values(rbac.roles)
 }
 
-func (rbac *RBAC) Role(name string) (Role, error) {
+func (rbac *RBAC) Role(name string) (*Role, error) {
 	if role, ok := rbac.roles[name]; ok {
 		return role, nil
 	}
@@ -57,27 +59,23 @@ func (rbac *RBAC) Role(name string) (Role, error) {
 }
 
 func (rbac *RBAC) HasRole(role any) (bool, error) {
-	switch role := role.(type) {
-	case string:
-		_, ok := rbac.roles[role]
-		return ok, nil
-	case Role, *DefaultRole, DefaultRole:
-		r, ok := rbac.roles[fmt.Sprintf("%s", role)]
-		return ok && r == role, nil
-	default:
-		return false, ErrInvalidRole
+	name, err := rbac.roleName(role)
+	if err != nil {
+		return false, err
 	}
+	_, ok := rbac.roles[name]
+	return ok, nil
 }
 
 func (rbac *RBAC) AddRole(role any, parents ...any) error {
-	var r Role
+	var r *Role
 	switch role := role.(type) {
 	case string:
 		r = NewRole(role)
 	case Role:
-		r = role
-	case DefaultRole:
 		r = &role
+	case *Role:
+		r = role
 	default:
 		return ErrInvalidRole
 	}
@@ -94,16 +92,19 @@ func (rbac *RBAC) AddRole(role any, parents ...any) error {
 				}
 			}
 		}
+
 		parentRole, err := rbac.Role(fmt.Sprintf("%s", parent))
 		if err != nil {
 			return err
 		}
+
 		if err = parentRole.AddChild(r); err != nil {
 			return err
 		}
 	}
 
 	rbac.roles[r.Name()] = r
+
 	return nil
 }
 
@@ -112,18 +113,24 @@ func (rbac *RBAC) IsGranted(ctx context.Context, role any, permission string, as
 	return granted && err == nil
 }
 
-func (rbac *RBAC) IsGrantedE(ctx context.Context, role any, permission string, assertions ...Assertion) (bool, error) {
-	ok, err := rbac.HasRole(role)
+func (rbac *RBAC) IsGrantedE(ctx context.Context, role any, permission string, assertions ...Assertion) (granted bool, err error) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			var ok bool
+			if err, ok = rec.(error); !ok {
+				err = fmt.Errorf("%v", rec)
+			}
+		}
+	}()
+
+	name, err := rbac.roleName(role)
 	if err != nil {
 		return false, err
-	}
-	if !ok {
-		return false, fmt.Errorf(`%w: no role with name "%s" could be found`, ErrRoleNotFound, role)
 	}
 
-	r, err := rbac.Role(fmt.Sprintf("%s", role))
-	if err != nil {
-		return false, err
+	r, ok := rbac.roles[name]
+	if !ok {
+		return false, fmt.Errorf(`%w: no role with name "%s" could be found`, ErrRoleNotFound, role)
 	}
 
 	if !r.HasPermission(permission) {
@@ -131,10 +138,23 @@ func (rbac *RBAC) IsGrantedE(ctx context.Context, role any, permission string, a
 	}
 
 	for _, assertion := range assertions {
-		if ok, err = assertion.Assert(ctx, r, permission); !ok || err != nil {
-			return false, err
+		if ok = assertion.Assert(ctx, r, permission); !ok {
+			return false, nil
 		}
 	}
 
 	return true, nil
+}
+
+func (rbac *RBAC) roleName(role any) (string, error) {
+	switch role := role.(type) {
+	case string:
+		return role, nil
+	case Role:
+		return role.Name(), nil
+	case *Role:
+		return role.Name(), nil
+	default:
+		return "", ErrInvalidRole
+	}
 }

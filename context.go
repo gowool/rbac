@@ -4,7 +4,6 @@ import "context"
 
 type (
 	claimsKey      struct{}
-	targetKey      struct{}
 	assertionsKey  struct{}
 	requestInfoKey struct{}
 )
@@ -16,15 +15,6 @@ func WithClaims(ctx context.Context, claims *Claims) context.Context {
 func CtxClaims(ctx context.Context) *Claims {
 	claims, _ := ctx.Value(claimsKey{}).(*Claims)
 	return claims
-}
-
-func WithTarget(ctx context.Context, target *Target) context.Context {
-	return context.WithValue(ctx, targetKey{}, target)
-}
-
-func CtxTarget(ctx context.Context) *Target {
-	target, _ := ctx.Value(targetKey{}).(*Target)
-	return target
 }
 
 func WithAssertions(ctx context.Context, assertions ...Assertion) context.Context {

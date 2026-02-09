@@ -46,8 +46,8 @@ func main() {
     userRole := rbac.NewRole("user")
 
     // Add roles to RBAC (user inherits from admin)
-    r.AddRole(adminRole)
-    r.AddRole(userRole, adminRole)
+    _ = r.AddRole(adminRole)
+    _ = r.AddRole(userRole, adminRole)
 
     // Add permissions
     adminRole.AddPermissions("user.create", "user.delete", "user.*")
@@ -66,9 +66,7 @@ func main() {
 ```go
 package main
 
-import (
-    "github.com/gowool/rbac"
-)
+import "github.com/gowool/rbac"
 
 func main() {
     config := rbac.Config{
@@ -161,13 +159,11 @@ Built-in context functions for request-scoped data:
 // Add claims to context
 ctx := rbac.WithClaims(context.Background(), claims)
 
-// Add target and assertions
-ctx = rbac.WithTarget(ctx, target)
+// Add assertions
 ctx = rbac.WithAssertions(ctx, assertion1, assertion2)
 
 // Extract from context
 claims := rbac.CtxClaims(ctx)
-target := rbac.CtxTarget(ctx)
 assertions := rbac.CtxAssertions(ctx)
 ```
 

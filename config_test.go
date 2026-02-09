@@ -1,6 +1,7 @@
 package rbac
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -122,8 +123,8 @@ func (s *configSuit) TestApply() {
 	s.NotNil(admin)
 
 	// Verify role hierarchy
-	s.Contains(admin.Parents(), root)
-	s.Contains(root.Children(), admin)
+	s.Contains(slices.Collect(admin.Parents()), root)
+	s.Contains(slices.Collect(root.Children()), admin)
 
 	// Verify permissions
 	s.True(root.HasPermission("sudo"))
@@ -169,10 +170,10 @@ func (s *configSuit) TestApplyRoleHierarchy() {
 	s.NoError(err)
 
 	// Verify parent-child relationships
-	s.Contains(employee.Parents(), manager)
-	s.Contains(intern.Parents(), manager)
-	s.Contains(manager.Children(), employee)
-	s.Contains(manager.Children(), intern)
+	s.Contains(slices.Collect(employee.Parents()), manager)
+	s.Contains(slices.Collect(intern.Parents()), manager)
+	s.Contains(slices.Collect(manager.Children()), employee)
+	s.Contains(slices.Collect(manager.Children()), intern)
 }
 
 func (s *configSuit) TestApplyAccessControl() {
@@ -320,7 +321,7 @@ func (s *configSuit) TestApplyCreateMissingRolesDisabled() {
 
 	err := s.rbac.Apply(cfg)
 	s.Error(err)
-	s.Contains(err.Error(), "role not found")
+	s.ErrorContains(err, "role not found")
 }
 
 func (s *configSuit) TestApplyComplexHierarchy() {
@@ -389,10 +390,10 @@ func (s *configSuit) TestApplyComplexHierarchy() {
 	cto, _ := s.rbac.Role("cto")
 	engineer, _ := s.rbac.Role("engineer")
 
-	s.Contains(cto.Parents(), ceo)
-	s.Contains(ceo.Children(), cto)
-	s.Contains(engineer.Parents(), cto)
-	s.Contains(cto.Children(), engineer)
+	s.Contains(slices.Collect(cto.Parents()), ceo)
+	s.Contains(slices.Collect(ceo.Children()), cto)
+	s.Contains(slices.Collect(engineer.Parents()), cto)
+	s.Contains(slices.Collect(cto.Children()), engineer)
 }
 
 func (s *configSuit) TestApplyMultipleTimes() {

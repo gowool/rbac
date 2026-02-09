@@ -2,7 +2,6 @@ package rbac
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -22,11 +21,10 @@ func (s *testRequestSubject) Roles() []string {
 // Mock authorizer for testing
 type mockAuthorizer struct {
 	decision Decision
-	err      error
 }
 
-func (m *mockAuthorizer) Authorize(ctx context.Context, claims *Claims, target *Target) (Decision, error) {
-	return m.decision, m.err
+func (m *mockAuthorizer) Authorize(context.Context, *Claims, *Target) Decision {
+	return m.decision
 }
 
 type authorizerRequestSuit struct {
@@ -42,7 +40,7 @@ func TestAuthorizerRequestSuite(t *testing.T) {
 
 func (s *authorizerRequestSuit) SetupTest() {
 	s.rbac = New()
-	s.authorizer = &mockAuthorizer{decision: DecisionDeny, err: ErrDeny}
+	s.authorizer = &mockAuthorizer{decision: DecisionDeny}
 }
 
 func (s *authorizerRequestSuit) TestRequestInfo_Fields() {
@@ -59,7 +57,7 @@ func (s *authorizerRequestSuit) TestRequestInfo_Fields() {
 		Pattern:    req.Pattern,
 		RemoteAddr: req.RemoteAddr,
 		Header:     req.Header,
-		URL:        *req.URL,
+		URL:        req.URL,
 		IsTLS:      req.TLS != nil, // This field is not set by RequestAuthorizer but we can test it here
 	}
 
@@ -89,8 +87,8 @@ func (s *authorizerRequestSuit) TestRequestAuthorizer_NilActions() {
 
 	req := httptest.NewRequest("GET", "/api/users", nil).WithContext(ctx)
 
-	err := authorizerFunc(req)
-	s.ErrorIs(err, ErrDeny)
+	decision := authorizerFunc(req)
+	s.Equal(DecisionDeny, decision)
 }
 
 func (s *authorizerRequestSuit) TestRequestAuthorizer_CustomActions() {
@@ -101,7 +99,6 @@ func (s *authorizerRequestSuit) TestRequestAuthorizer_CustomActions() {
 
 	// Setup authorizer to allow custom action
 	s.authorizer.decision = DecisionAllow
-	s.authorizer.err = nil
 
 	authorizerFunc := RequestAuthorizer(s.authorizer, customActions)
 
@@ -115,14 +112,13 @@ func (s *authorizerRequestSuit) TestRequestAuthorizer_CustomActions() {
 
 	req := httptest.NewRequest("GET", "/api/users", nil).WithContext(ctx)
 
-	err := authorizerFunc(req)
-	s.NoError(err) // Should be allowed
+	decision := authorizerFunc(req)
+	s.Equal(DecisionAllow, decision)
 }
 
 func (s *authorizerRequestSuit) TestRequestAuthorizer_WithClaimsInContext() {
 	// Setup authorizer to allow
 	s.authorizer.decision = DecisionAllow
-	s.authorizer.err = nil
 
 	authorizerFunc := RequestAuthorizer(s.authorizer, nil)
 
@@ -136,14 +132,13 @@ func (s *authorizerRequestSuit) TestRequestAuthorizer_WithClaimsInContext() {
 
 	req := httptest.NewRequest("GET", "/api/users", nil).WithContext(ctx)
 
-	err := authorizerFunc(req)
-	s.NoError(err)
+	decision := authorizerFunc(req)
+	s.Equal(DecisionAllow, decision)
 }
 
 func (s *authorizerRequestSuit) TestRequestAuthorizer_WithAssertions() {
 	// Setup authorizer to allow
 	s.authorizer.decision = DecisionAllow
-	s.authorizer.err = nil
 
 	authorizerFunc := RequestAuthorizer(s.authorizer, nil)
 
@@ -160,69 +155,8 @@ func (s *authorizerRequestSuit) TestRequestAuthorizer_WithAssertions() {
 
 	req := httptest.NewRequest("GET", "/api/users", nil).WithContext(ctx)
 
-	err := authorizerFunc(req)
-	s.NoError(err)
-}
-
-func (s *authorizerRequestSuit) TestRequestAuthorizer_WithTargetInContext() {
-	// Setup authorizer to allow
-	s.authorizer.decision = DecisionAllow
-	s.authorizer.err = nil
-
-	authorizerFunc := RequestAuthorizer(s.authorizer, nil)
-
-	// Setup context with claims and target
-	subject := &testRequestSubject{roles: []string{"user"}}
-	claims := &Claims{
-		Subject:  subject,
-		Metadata: map[string]any{},
-	}
-
-	target := &Target{
-		Action:     "custom:action",
-		Assertions: []Assertion{},
-		Metadata:   map[string]any{},
-	}
-
-	ctx := WithClaims(context.Background(), claims)
-	ctx = WithTarget(ctx, target)
-
-	req := httptest.NewRequest("GET", "/api/users", nil).WithContext(ctx)
-
-	err := authorizerFunc(req)
-	s.NoError(err)
-}
-
-func (s *authorizerRequestSuit) TestRequestAuthorizer_WithTargetAndAssertions() {
-	// Setup authorizer to allow
-	s.authorizer.decision = DecisionAllow
-	s.authorizer.err = nil
-
-	authorizerFunc := RequestAuthorizer(s.authorizer, nil)
-
-	// Setup context with claims, target, and assertions
-	subject := &testRequestSubject{roles: []string{"user"}}
-	claims := &Claims{
-		Subject:  subject,
-		Metadata: map[string]any{},
-	}
-
-	target := &Target{
-		Action:     "read:data",
-		Assertions: []Assertion{&testAssertion{shouldPass: true}},
-		Metadata:   map[string]any{},
-	}
-
-	assertions := []Assertion{&testAssertion{shouldPass: true}}
-
-	ctx := WithClaims(context.Background(), claims)
-	ctx = WithAssertions(ctx, assertions...)
-	ctx = WithTarget(ctx, target)
-
-	req := httptest.NewRequest("GET", "/api/users", nil).WithContext(ctx)
-
-	err := authorizerFunc(req)
-	s.NoError(err)
+	decision := authorizerFunc(req)
+	s.Equal(DecisionAllow, decision)
 }
 
 func (s *authorizerRequestSuit) TestRequestAuthorizer_NoClaimsInContext() {
@@ -231,8 +165,8 @@ func (s *authorizerRequestSuit) TestRequestAuthorizer_NoClaimsInContext() {
 	// Request without claims in context
 	req := httptest.NewRequest("GET", "/api/users", nil)
 
-	err := authorizerFunc(req)
-	s.ErrorIs(err, ErrDeny)
+	decision := authorizerFunc(req)
+	s.Equal(DecisionDeny, decision)
 }
 
 func (s *authorizerRequestSuit) TestRequestAuthorizer_ClaimsWithNilSubject() {
@@ -247,30 +181,8 @@ func (s *authorizerRequestSuit) TestRequestAuthorizer_ClaimsWithNilSubject() {
 
 	req := httptest.NewRequest("GET", "/api/users", nil).WithContext(ctx)
 
-	err := authorizerFunc(req)
-	s.ErrorIs(err, ErrDeny)
-}
-
-func (s *authorizerRequestSuit) TestRequestAuthorizer_AuthorizerError() {
-	// Setup authorizer to return an error
-	s.authorizer.decision = DecisionDeny
-	s.authorizer.err = errors.New("authorizer error")
-
-	authorizerFunc := RequestAuthorizer(s.authorizer, nil)
-
-	// Setup context with claims
-	subject := &testRequestSubject{roles: []string{"user"}}
-	claims := &Claims{
-		Subject:  subject,
-		Metadata: map[string]any{},
-	}
-	ctx := WithClaims(context.Background(), claims)
-
-	req := httptest.NewRequest("GET", "/api/users", nil).WithContext(ctx)
-
-	err := authorizerFunc(req)
-	s.Error(err)
-	s.ErrorContains(err, "authorizer error")
+	decision := authorizerFunc(req)
+	s.Equal(DecisionDeny, decision)
 }
 
 func (s *authorizerRequestSuit) TestRequestAuthorizer_MultipleActions_FirstSucceeds() {
@@ -281,7 +193,6 @@ func (s *authorizerRequestSuit) TestRequestAuthorizer_MultipleActions_FirstSucce
 
 	// Setup authorizer to allow first action
 	s.authorizer.decision = DecisionAllow
-	s.authorizer.err = nil
 
 	authorizerFunc := RequestAuthorizer(s.authorizer, customActions)
 
@@ -295,8 +206,8 @@ func (s *authorizerRequestSuit) TestRequestAuthorizer_MultipleActions_FirstSucce
 
 	req := httptest.NewRequest("GET", "/api/users", nil).WithContext(ctx)
 
-	err := authorizerFunc(req)
-	s.NoError(err) // Should be allowed by first action
+	decision := authorizerFunc(req)
+	s.Equal(DecisionAllow, decision)
 }
 
 func (s *authorizerRequestSuit) TestRequestAuthorizer_MultipleActions_SecondSucceeds() {
@@ -307,7 +218,6 @@ func (s *authorizerRequestSuit) TestRequestAuthorizer_MultipleActions_SecondSucc
 
 	s.authorizer = &mockAuthorizer{
 		decision: DecisionAllow,
-		err:      nil,
 	}
 
 	authorizerFunc := RequestAuthorizer(s.authorizer, customActions)
@@ -322,14 +232,13 @@ func (s *authorizerRequestSuit) TestRequestAuthorizer_MultipleActions_SecondSucc
 
 	req := httptest.NewRequest("GET", "/api/users", nil).WithContext(ctx)
 
-	err := authorizerFunc(req)
-	s.NoError(err) // Should be allowed
+	decision := authorizerFunc(req)
+	s.Equal(DecisionAllow, decision)
 }
 
 func (s *authorizerRequestSuit) TestRequestAuthorizer_RequestInfoInContext() {
 	// Setup authorizer to allow
 	s.authorizer.decision = DecisionAllow
-	s.authorizer.err = nil
 
 	authorizerFunc := RequestAuthorizer(s.authorizer, nil)
 
@@ -345,8 +254,8 @@ func (s *authorizerRequestSuit) TestRequestAuthorizer_RequestInfoInContext() {
 	req := httptest.NewRequest("POST", "/api/data", nil)
 	req = req.WithContext(ctx)
 
-	err := authorizerFunc(req)
-	s.NoError(err)
+	decision := authorizerFunc(req)
+	s.Equal(DecisionAllow, decision)
 
 	// Verify RequestInfo was added to context (just check basic functionality)
 	info := CtxRequestInfo(req.Context())
@@ -356,7 +265,6 @@ func (s *authorizerRequestSuit) TestRequestAuthorizer_RequestInfoInContext() {
 func (s *authorizerRequestSuit) TestRequestAuthorizer_TLSRequest() {
 	// Setup authorizer to allow
 	s.authorizer.decision = DecisionAllow
-	s.authorizer.err = nil
 
 	authorizerFunc := RequestAuthorizer(s.authorizer, nil)
 
@@ -372,8 +280,8 @@ func (s *authorizerRequestSuit) TestRequestAuthorizer_TLSRequest() {
 	req := httptest.NewRequest("GET", "https://secure.example.com/api/users", nil)
 	req = req.WithContext(ctx)
 
-	err := authorizerFunc(req)
-	s.NoError(err)
+	decision := authorizerFunc(req)
+	s.Equal(DecisionAllow, decision)
 
 	// Verify RequestInfo was added to context
 	info := CtxRequestInfo(req.Context())
@@ -397,8 +305,8 @@ func (s *authorizerRequestSuit) TestRequestAuthorizer_ObjectPoolUsage() {
 	// Make multiple requests to exercise the pool
 	for i := 0; i < 10; i++ {
 		req := httptest.NewRequest("GET", "/api/users", nil).WithContext(ctx)
-		err := authorizerFunc(req)
-		s.ErrorIs(err, ErrDeny) // Always denied in this test
+		decision := authorizerFunc(req)
+		s.Equal(DecisionDeny, decision)
 	}
 }
 
@@ -493,7 +401,6 @@ func (s *authorizerRequestSuit) TestDefaultActionsWithQueryParams() {
 func (s *authorizerRequestSuit) TestRequestAuthorizer_ComplexURL() {
 	// Setup authorizer to allow
 	s.authorizer.decision = DecisionAllow
-	s.authorizer.err = nil
 
 	authorizerFunc := RequestAuthorizer(s.authorizer, nil)
 
@@ -509,8 +416,8 @@ func (s *authorizerRequestSuit) TestRequestAuthorizer_ComplexURL() {
 	req := httptest.NewRequest("POST", "https://api.example.com:8443/v1/resource?id=123&filter=active", nil)
 	req = req.WithContext(ctx)
 
-	err := authorizerFunc(req)
-	s.NoError(err)
+	decision := authorizerFunc(req)
+	s.Equal(DecisionAllow, decision)
 
 	// Verify RequestInfo was added to context (URL may be reset by WithContext)
 	info := CtxRequestInfo(req.Context())

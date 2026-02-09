@@ -20,17 +20,16 @@ func (s *testSubject) Roles() []string {
 // Test assertions for authorizer tests
 type testAssertion struct {
 	shouldPass bool
-	err        error
 }
 
-func (a *testAssertion) Assert(ctx context.Context, role Role, permission string) (bool, error) {
-	return a.shouldPass, a.err
+func (a *testAssertion) Assert(context.Context, *Role, string) bool {
+	return a.shouldPass
 }
 
-type failingAssertion struct{}
+type panicAssertion struct{}
 
-func (a *failingAssertion) Assert(ctx context.Context, role Role, permission string) (bool, error) {
-	return false, errors.New("assertion failed")
+func (a *panicAssertion) Assert(context.Context, *Role, string) bool {
+	panic(errors.New("assertion failed"))
 }
 
 type authorizerSuit struct {
@@ -80,9 +79,9 @@ func (s *authorizerSuit) TestAuthorize_ValidRequestWithPermission() {
 		Metadata:   map[string]any{},
 	}
 
-	decision, err := s.authorizer.Authorize(context.Background(), claims, target)
+	decision, err := s.authorizer.AuthorizeE(context.Background(), claims, target)
 
-	s.Equal(Decision(DecisionAllow), decision)
+	s.Equal(DecisionAllow, decision)
 	s.NoError(err)
 }
 
@@ -109,9 +108,9 @@ func (s *authorizerSuit) TestAuthorize_ValidRequestWithoutPermission() {
 		Metadata:   map[string]any{},
 	}
 
-	decision, err := s.authorizer.Authorize(context.Background(), claims, target)
+	decision, err := s.authorizer.AuthorizeE(context.Background(), claims, target)
 
-	s.Equal(Decision(DecisionDeny), decision)
+	s.Equal(DecisionDeny, decision)
 	s.ErrorIs(err, ErrDeny)
 }
 
@@ -143,9 +142,9 @@ func (s *authorizerSuit) TestAuthorize_MultipleRoles() {
 		Metadata:   map[string]any{},
 	}
 
-	decision, err := s.authorizer.Authorize(context.Background(), claims, target)
+	decision, err := s.authorizer.AuthorizeE(context.Background(), claims, target)
 
-	s.Equal(Decision(DecisionAllow), decision)
+	s.Equal(DecisionAllow, decision)
 	s.NoError(err)
 }
 
@@ -173,21 +172,21 @@ func (s *authorizerSuit) TestAuthorize_WithAssertions() {
 		Metadata:   map[string]any{},
 	}
 
-	decision, err := s.authorizer.Authorize(context.Background(), claims, target)
+	decision, err := s.authorizer.AuthorizeE(context.Background(), claims, target)
 
-	s.Equal(Decision(DecisionAllow), decision)
+	s.Equal(DecisionAllow, decision)
 	s.NoError(err)
 
 	// Test with failing assertion
 	target.Assertions = []Assertion{&testAssertion{shouldPass: false}}
 
-	decision, err = s.authorizer.Authorize(context.Background(), claims, target)
+	decision, err = s.authorizer.AuthorizeE(context.Background(), claims, target)
 
-	s.Equal(Decision(DecisionDeny), decision)
+	s.Equal(DecisionDeny, decision)
 	s.ErrorIs(err, ErrDeny)
 }
 
-func (s *authorizerSuit) TestAuthorize_WithAssertionError() {
+func (s *authorizerSuit) TestAuthorize_WithAssertionPanic() {
 	// Setup roles
 	userRole := NewRole("user")
 	userRole.AddPermissions("read:posts")
@@ -206,13 +205,13 @@ func (s *authorizerSuit) TestAuthorize_WithAssertionError() {
 
 	target := &Target{
 		Action:     "read:posts",
-		Assertions: []Assertion{&failingAssertion{}},
+		Assertions: []Assertion{&panicAssertion{}},
 		Metadata:   map[string]any{},
 	}
 
-	decision, err := s.authorizer.Authorize(context.Background(), claims, target)
+	decision, err := s.authorizer.AuthorizeE(context.Background(), claims, target)
 
-	s.Equal(Decision(DecisionDeny), decision)
+	s.Equal(DecisionDeny, decision)
 	s.ErrorContains(err, "assertion failed")
 }
 
@@ -243,9 +242,9 @@ func (s *authorizerSuit) TestAuthorize_MultipleRoles_FirstSucceeds() {
 		Metadata:   map[string]any{},
 	}
 
-	decision, err := s.authorizer.Authorize(context.Background(), claims, target)
+	decision, err := s.authorizer.AuthorizeE(context.Background(), claims, target)
 
-	s.Equal(Decision(DecisionAllow), decision)
+	s.Equal(DecisionAllow, decision)
 	s.NoError(err)
 }
 
@@ -276,9 +275,9 @@ func (s *authorizerSuit) TestAuthorize_MultipleRoles_SecondSucceeds() {
 		Metadata:   map[string]any{},
 	}
 
-	decision, err := s.authorizer.Authorize(context.Background(), claims, target)
+	decision, err := s.authorizer.AuthorizeE(context.Background(), claims, target)
 
-	s.Equal(Decision(DecisionAllow), decision)
+	s.Equal(DecisionAllow, decision)
 	s.NoError(err)
 }
 
@@ -292,9 +291,9 @@ func (s *authorizerSuit) TestAuthorize_NilTarget() {
 		Metadata: map[string]any{},
 	}
 
-	decision, err := s.authorizer.Authorize(context.Background(), claims, nil)
+	decision, err := s.authorizer.AuthorizeE(context.Background(), claims, nil)
 
-	s.Equal(Decision(DecisionDeny), decision)
+	s.Equal(DecisionDeny, decision)
 	s.ErrorIs(err, ErrDeny)
 }
 
@@ -314,9 +313,9 @@ func (s *authorizerSuit) TestAuthorize_TargetWithEmptyAction() {
 		Metadata:   map[string]any{},
 	}
 
-	decision, err := s.authorizer.Authorize(context.Background(), claims, target)
+	decision, err := s.authorizer.AuthorizeE(context.Background(), claims, target)
 
-	s.Equal(Decision(DecisionDeny), decision)
+	s.Equal(DecisionDeny, decision)
 	s.ErrorIs(err, ErrDeny)
 }
 
@@ -327,9 +326,9 @@ func (s *authorizerSuit) TestAuthorize_NilClaims() {
 		Metadata:   map[string]any{},
 	}
 
-	decision, err := s.authorizer.Authorize(context.Background(), nil, target)
+	decision, err := s.authorizer.AuthorizeE(context.Background(), nil, target)
 
-	s.Equal(Decision(DecisionDeny), decision)
+	s.Equal(DecisionDeny, decision)
 	s.ErrorIs(err, ErrDeny)
 }
 
@@ -345,9 +344,9 @@ func (s *authorizerSuit) TestAuthorize_ClaimsWithNilSubject() {
 		Metadata:   map[string]any{},
 	}
 
-	decision, err := s.authorizer.Authorize(context.Background(), claims, target)
+	decision, err := s.authorizer.AuthorizeE(context.Background(), claims, target)
 
-	s.Equal(Decision(DecisionDeny), decision)
+	s.Equal(DecisionDeny, decision)
 	s.ErrorIs(err, ErrDeny)
 }
 
@@ -367,9 +366,9 @@ func (s *authorizerSuit) TestAuthorize_NonExistentRole() {
 		Metadata:   map[string]any{},
 	}
 
-	decision, err := s.authorizer.Authorize(context.Background(), claims, target)
+	decision, err := s.authorizer.AuthorizeE(context.Background(), claims, target)
 
-	s.Equal(Decision(DecisionDeny), decision)
+	s.Equal(DecisionDeny, decision)
 	s.ErrorIs(err, ErrDeny)
 	s.ErrorContains(err, ErrRoleNotFound.Error())
 }
@@ -390,15 +389,15 @@ func (s *authorizerSuit) TestAuthorize_EmptyRoles() {
 		Metadata:   map[string]any{},
 	}
 
-	decision, err := s.authorizer.Authorize(context.Background(), claims, target)
+	decision, err := s.authorizer.AuthorizeE(context.Background(), claims, target)
 
-	s.Equal(Decision(DecisionDeny), decision)
+	s.Equal(DecisionDeny, decision)
 	s.ErrorIs(err, ErrDeny)
 }
 
 func (s *authorizerSuit) TestDecisionString() {
-	deny := Decision(DecisionDeny)
-	allow := Decision(DecisionAllow)
+	deny := DecisionDeny
+	allow := DecisionAllow
 	s.Equal("deny", deny.String())
 	s.Equal("allow", allow.String())
 	s.Equal("unknown", Decision(2).String()) // Invalid decision
@@ -442,32 +441,8 @@ func (s *authorizerSuit) TestAuthorize_WithContext() {
 		Metadata:   map[string]any{},
 	}
 
-	decision, err := s.authorizer.Authorize(ctx, claims, target)
+	decision, err := s.authorizer.AuthorizeE(ctx, claims, target)
 
-	s.Equal(Decision(DecisionAllow), decision)
+	s.Equal(DecisionAllow, decision)
 	s.NoError(err)
-}
-
-func (s *authorizerSuit) TestAuthorize_MultipleErrorsJoined() {
-	subject := &testSubject{
-		roles: []string{"nonexistent1", "nonexistent2"},
-	}
-
-	claims := &Claims{
-		Subject:  subject,
-		Metadata: map[string]any{},
-	}
-
-	target := &Target{
-		Action:     "read:posts",
-		Assertions: []Assertion{&failingAssertion{}},
-		Metadata:   map[string]any{},
-	}
-
-	decision, err := s.authorizer.Authorize(context.Background(), claims, target)
-
-	s.Equal(Decision(DecisionDeny), decision)
-	s.Error(err)
-	// Should contain role not found errors
-	s.Contains(err.Error(), ErrRoleNotFound.Error())
 }

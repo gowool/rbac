@@ -1,85 +1,67 @@
 package rbac
 
 import (
-	"errors"
 	"fmt"
+	"iter"
 	"maps"
 	"regexp"
-	"slices"
+	"sync"
 )
 
-var _ Role = (*DefaultRole)(nil)
+var _ fmt.Stringer = (*Role)(nil)
 
-var ErrCircularReference = errors.New("circular reference detected")
+var perms = new(sync.Map)
 
-type Role interface {
-	fmt.Stringer
-	Name() string
-	AddPermissions(permission string, rest ...string)
-	HasPermission(permission string) bool
-	Permissions(children bool) []string
-	RePermissions(children bool) []*regexp.Regexp
-	AddParent(Role) error
-	Parents() []Role
-	AddChild(Role) error
-	Children() []Role
-	HasAncestor(role Role) bool
-	HasDescendant(role Role) bool
+type Role struct {
+	name        string
+	permissions map[string]*regexp.Regexp
+	parents     map[string]*Role
+	children    map[string]*Role
 }
 
-type DefaultRole struct {
-	name          string
-	rePermissions []*regexp.Regexp
-	permissions   map[string]struct{}
-	parents       map[string]Role
-	children      map[string]Role
-}
-
-func NewRole(name string) *DefaultRole {
-	return &DefaultRole{
+func NewRole(name string) *Role {
+	return &Role{
 		name:        name,
-		permissions: map[string]struct{}{},
-		parents:     map[string]Role{},
-		children:    map[string]Role{},
+		permissions: map[string]*regexp.Regexp{},
+		parents:     map[string]*Role{},
+		children:    map[string]*Role{},
 	}
 }
 
-func (r *DefaultRole) String() string {
+func (r *Role) String() string {
 	return r.Name()
 }
 
-func (r *DefaultRole) Name() string {
+func (r *Role) Name() string {
 	return r.name
 }
 
-func (r *DefaultRole) AddPermissions(permission string, rest ...string) {
-	if re, err := regexp.Compile(permission); err == nil {
-		r.rePermissions = append(r.rePermissions, re)
-	} else {
-		r.permissions[permission] = struct{}{}
-	}
-
-	for _, p := range rest {
-		if re, err := regexp.Compile(p); err == nil {
-			r.rePermissions = append(r.rePermissions, re)
+func (r *Role) AddPermissions(permissions ...string) {
+	for _, permission := range permissions {
+		var re *regexp.Regexp
+		if value, ok := perms.Load(permission); ok {
+			re, _ = value.(*regexp.Regexp)
 		} else {
-			r.permissions[p] = struct{}{}
+			re, _ = regexp.Compile(permission)
+			perms.Store(permission, re)
 		}
+
+		r.permissions[permission] = re
 	}
 }
 
-func (r *DefaultRole) HasPermission(permission string) bool {
+func (r *Role) HasPermission(permission string) bool {
 	if _, ok := r.permissions[permission]; ok {
 		return true
 	}
 
-	for _, re := range r.rePermissions {
-		if re.MatchString(permission) {
+	for _, re := range r.permissions {
+		if re != nil && re.MatchString(permission) {
 			return true
 		}
 	}
 
-	for _, child := range r.children {
+	for child := range r.Children() {
 		if child.HasPermission(permission) {
 			return true
 		}
@@ -88,66 +70,79 @@ func (r *DefaultRole) HasPermission(permission string) bool {
 	return false
 }
 
-func (r *DefaultRole) Permissions(children bool) []string {
-	permissions := make([]string, 0, len(r.permissions)+len(r.rePermissions))
-	permissions = append(permissions, slices.Collect(maps.Keys(r.permissions))...)
-	for _, re := range r.rePermissions {
-		permissions = append(permissions, re.String())
+func (r *Role) Permissions(children bool) iter.Seq[string] {
+	return func(yield func(string) bool) {
+		_ = iterPermissions(r, children, yield)
 	}
-	if children {
-		for _, child := range r.children {
-			permissions = append(permissions, child.Permissions(children)...)
-		}
-	}
-	return permissions
 }
 
-func (r *DefaultRole) RePermissions(children bool) []*regexp.Regexp {
-	permissions := make([]*regexp.Regexp, len(r.rePermissions))
-	copy(permissions, r.rePermissions)
-	if children {
-		for _, child := range r.children {
-			permissions = append(permissions, child.RePermissions(children)...)
+func iterPermissions(r *Role, children bool, yield func(string) bool) bool {
+	for permission := range r.permissions {
+		if !yield(permission) {
+			return false
 		}
 	}
-	return permissions
+
+	if children {
+		for child := range r.Children() {
+			if !iterPermissions(child, children, yield) {
+				return false
+			}
+		}
+	}
+
+	return true
 }
 
-func (r *DefaultRole) AddParent(parent Role) error {
-	if r.HasDescendant(parent) {
-		return fmt.Errorf(`%w: to prevent circular references, you cannot add role "%s" as parent`, ErrCircularReference, parent.Name())
+func (r *Role) AddParent(parent *Role) error {
+	if parent == nil {
+		panic(ErrRoleNil)
 	}
 
 	if _, ok := r.parents[parent.Name()]; ok {
 		return nil
 	}
 
+	if r.HasDescendant(parent) {
+		return fmt.Errorf(`%w: to prevent circular references, you cannot add role "%s" as parent`, ErrCircularRef, parent.Name())
+	}
+
 	r.parents[parent.Name()] = parent
+
 	return parent.AddChild(r)
 }
 
-func (r *DefaultRole) Parents() []Role {
-	return slices.Collect(maps.Values(r.parents))
+func (r *Role) Parents() iter.Seq[*Role] {
+	return maps.Values(r.parents)
 }
 
-func (r *DefaultRole) AddChild(child Role) error {
-	if r.HasAncestor(child) {
-		return fmt.Errorf(`%w: to prevent circular references, you cannot add role "%s" as child`, ErrCircularReference, child.Name())
+func (r *Role) AddChild(child *Role) error {
+	if child == nil {
+		panic(ErrRoleNil)
 	}
 
 	if _, ok := r.children[child.Name()]; ok {
 		return nil
 	}
 
+	if r.HasAncestor(child) {
+		return fmt.Errorf(`%w: to prevent circular references, you cannot add role "%s" as child`, ErrCircularRef, child.Name())
+	}
+
 	r.children[child.Name()] = child
+
 	return child.AddParent(r)
 }
 
-func (r *DefaultRole) Children() []Role {
-	return slices.Collect(maps.Values(r.children))
+func (r *Role) Children() iter.Seq[*Role] {
+	return maps.Values(r.children)
 }
 
-func (r *DefaultRole) HasAncestor(role Role) bool {
+func (r *Role) HasAncestor(role *Role) bool {
+	if role == nil {
+		panic(ErrRoleNil)
+	}
+
 	if _, ok := r.parents[role.Name()]; ok {
 		return true
 	}
@@ -157,10 +152,15 @@ func (r *DefaultRole) HasAncestor(role Role) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
-func (r *DefaultRole) HasDescendant(role Role) bool {
+func (r *Role) HasDescendant(role *Role) bool {
+	if role == nil {
+		panic(ErrRoleNil)
+	}
+
 	if _, ok := r.children[role.Name()]; ok {
 		return true
 	}
@@ -170,5 +170,6 @@ func (r *DefaultRole) HasDescendant(role Role) bool {
 			return true
 		}
 	}
+
 	return false
 }

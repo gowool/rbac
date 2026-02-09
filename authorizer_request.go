@@ -14,29 +14,20 @@ type RequestInfo struct {
 	Pattern    string
 	RemoteAddr string
 	Header     http.Header
-	URL        url.URL
+	URL        *url.URL
 	IsTLS      bool
 }
 
-func RequestAuthorizer(authorizer Authorizer, actions func(*http.Request) []string) func(*http.Request) error {
+func RequestAuthorizer(authorizer Authorizer, actions func(*http.Request) []string) func(*http.Request) Decision {
 	if actions == nil {
 		actions = defaultActions
 	}
 
-	pool := &sync.Pool{
-		New: func() any {
-			return new(Target)
-		},
-	}
+	pool := &sync.Pool{New: func() any {
+		return new(Target)
+	}}
 
-	return func(r *http.Request) (err error) {
-		var decision Decision = DecisionDeny
-		defer func() {
-			if decision == DecisionDeny && err == nil {
-				err = ErrDeny
-			}
-		}()
-
+	return func(r *http.Request) Decision {
 		ctx := r.Context()
 		claims := CtxClaims(ctx)
 		assertions := CtxAssertions(ctx)
@@ -54,29 +45,19 @@ func RequestAuthorizer(authorizer Authorizer, actions func(*http.Request) []stri
 			Pattern:    r.Pattern,
 			RemoteAddr: r.RemoteAddr,
 			Header:     r.Header,
-			URL:        *r.URL,
+			URL:        r.URL,
 		})
-
-		if ctxTarget := CtxTarget(ctx); ctxTarget != nil {
-			target.Action = ctxTarget.Action
-			target.Metadata = ctxTarget.Metadata
-			target.Assertions = make([]Assertion, len(assertions)+len(ctxTarget.Assertions))
-			copy(target.Assertions, assertions)
-			copy(target.Assertions[len(assertions):], ctxTarget.Assertions)
-
-			decision, err = authorizer.Authorize(ctx, claims, target)
-			return
-		}
 
 		target.Assertions = assertions
 		for _, action := range actions(r) {
 			target.Action = action
 
-			if decision, err = authorizer.Authorize(ctx, claims, target); decision == DecisionAllow {
-				return nil
+			if authorizer.Authorize(ctx, claims, target) == DecisionAllow {
+				return DecisionAllow
 			}
 		}
-		return
+
+		return DecisionDeny
 	}
 }
 

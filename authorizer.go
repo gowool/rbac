@@ -5,6 +5,8 @@ import (
 	"errors"
 )
 
+var _ Authorizer = (*DefaultAuthorizer)(nil)
+
 var ErrDeny = errors.New("deny")
 
 type Subject interface {
@@ -23,6 +25,10 @@ type Target struct {
 }
 
 func (t *Target) reset() {
+	if t == nil {
+		return
+	}
+
 	t.Action = ""
 	t.Assertions = nil
 	t.Metadata = nil
@@ -31,7 +37,7 @@ func (t *Target) reset() {
 type Decision int8
 
 const (
-	DecisionDeny = iota
+	DecisionDeny Decision = iota
 	DecisionAllow
 )
 
@@ -47,7 +53,7 @@ func (d Decision) String() string {
 }
 
 type Authorizer interface {
-	Authorize(ctx context.Context, claims *Claims, target *Target) (Decision, error)
+	Authorize(ctx context.Context, claims *Claims, target *Target) Decision
 }
 
 type DefaultAuthorizer struct {
@@ -58,7 +64,12 @@ func NewDefaultAuthorizer(rbac *RBAC) *DefaultAuthorizer {
 	return &DefaultAuthorizer{rbac: rbac}
 }
 
-func (a *DefaultAuthorizer) Authorize(ctx context.Context, claims *Claims, target *Target) (d Decision, err error) {
+func (a *DefaultAuthorizer) Authorize(ctx context.Context, claims *Claims, target *Target) Decision {
+	d, _ := a.AuthorizeE(ctx, claims, target)
+	return d
+}
+
+func (a *DefaultAuthorizer) AuthorizeE(ctx context.Context, claims *Claims, target *Target) (d Decision, err error) {
 	d = DecisionDeny
 	err = ErrDeny
 

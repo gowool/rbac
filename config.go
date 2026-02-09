@@ -64,10 +64,7 @@ func (rbac *RBAC) Apply(cfg Config) error {
 		if err != nil {
 			return err
 		}
-		if len(access.Permissions) == 0 {
-			continue
-		}
-		r.AddPermissions(access.Permissions[0], access.Permissions[1:]...)
+		r.AddPermissions(access.Permissions...)
 	}
 	return nil
 }
